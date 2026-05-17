@@ -47,7 +47,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 # agentmemory
-AGENTMEMORY_URL = os.getenv("AGENTMEMORY_URL", "http://100.116.27.60:3111")
+# agentmemory — Mac Mini via SSH tunnel (ssh -L 3211:localhost:3111 vincent@100.116.27.60)
+# Falls back to local if tunnel isn't up
+AGENTMEMORY_URL = os.getenv("AGENTMEMORY_URL", "http://localhost:3211")
 
 # Pipeline settings
 MAX_CHUNK_TOKENS = 3000
