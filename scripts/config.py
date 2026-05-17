@@ -47,7 +47,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 # agentmemory
-AGENTMEMORY_URL = os.getenv("AGENTMEMORY_URL", "http://localhost:3111")
+AGENTMEMORY_URL = os.getenv("AGENTMEMORY_URL", "http://100.116.27.60:3111")
 
 # Pipeline settings
 MAX_CHUNK_TOKENS = 3000

@@ -67,10 +67,10 @@ python3 ~/.hermes/skills/memory-tree-pipeline/scripts/retrieve.py status
 
 ### Environment Variables
 - `ANTHROPIC_API_KEY` — Primary LLM for entity extraction and summaries (config.py auto-loads from ~/.hermes/.env)
-- `GROQ_API_KEY` — Fallback LLM (if Anthropic unavailable). Default key hardcoded in config.py but may expire
+- `GROQ_API_KEY` — Fallback LLM (if Anthropic unavailable). No default — set in ~/.hermes/.env
 - `THEBRAIN_API_KEY` — Optional, for TheBrain sync
 - `OPENAI_API_KEY` — Optional, for embeddings
-- `AGENTMEMORY_URL` — Optional, defaults to http://localhost:3111
+- `AGENTMEMORY_URL` — Optional, defaults to http://100.116.27.60:3111 (Mac Mini via Tailscale)
 
 ### LLM Provider Priority
 The extractor and tree summarizer try **Anthropic first** (better extraction quality), then fall back to **Groq** (free/fast). Config.py loads `~/.hermes/.env` automatically so API keys don't need to be manually exported. The Groq free tier key can return 403 if expired — Anthropic is the reliable path.
@@ -144,7 +144,8 @@ Hotness formula: `mention_count × recency_weight × cross_source_bonus` where r
 - config.py auto-loads `~/.hermes/.env` so child Python processes inherit Hermes API keys without manual export.
 
 ### Infrastructure
-- agentmemory must be running separately (`npx -y @agentmemory/agentmemory`)
+- **agentmemory** runs on the Mac Mini at `100.116.27.60:3111` (Tailscale IP). Start with `npx -y @agentmemory/agentmemory` on the Mini. Override with `AGENTMEMORY_URL` env var for local dev (`http://localhost:3111`).
+- The cron sync wrapper (`~/.hermes/scripts/memory_tree_sync.py`) pushes to agentmemory after Obsidian/Wiki/Memory Graph sync. Failures are caught and logged — they don't block other sync targets.
 - Memory Graph MCP sync writes a JSON file at `~/.hermes/memory_tree/memory_graph_sync.json`; Hermes must execute the MCP calls separately (the pipeline is a standalone Python process, not an MCP server)
 - Cron wrapper scripts live at `~/.hermes/scripts/memory_tree_*.py` because Hermes cron `script` paths must be relative to `~/.hermes/scripts/`. These thin wrappers just add the skill's scripts dir to sys.path and call the main function.
 
@@ -164,6 +165,24 @@ Hermes cron `script` paths must be relative to `~/.hermes/scripts/`. The pipelin
 
 - `references/architecture.md` — full system architecture diagram and design decisions
 - `references/parallel-llm-extraction.md` — reusable pattern for 30x faster bulk LLM processing with ThreadPoolExecutor
+
+### GitHub / PR Submission
+- **NousResearch/hermes-agent no longer accepts in-tree memory providers or skills PRs.** See CONTRIBUTING.md: "We are no longer accepting new memory providers into this repo." Must be published as a standalone plugin repo. Users install via `hermes skills tap add <user>/<repo>` or clone to `~/.hermes/skills/`.
+- **GitHub secret scanning** blocks pushes containing API keys. Before pushing to any public repo: strip all hardcoded keys from config.py (GROQ_API_KEY, THEBRAIN_API_KEY, brain IDs). Make all secrets env-var-only with empty string defaults. Squash git history to remove keys from old commits (`git reset --soft <first_commit> && git commit --amend`).
+- **Standalone repo:** https://github.com/vincentwi/hermes-memory-tree
+
+### Apple Notes Provider
+- The `memo` CLI may not be installed. The provider was rewritten to use `osascript` (AppleScript) which is always available on macOS.
+- osascript iterating 378 notes takes ~60-90 seconds — backfill will appear to hang but is working.
+- The provider uses a custom delimiter (`|||HERMES_SEP|||`) for reliable parsing of note name/body/id.
+
+### state.db Recovery
+If the Hermes state.db becomes corrupted ("database disk image is malformed"):
+1. `sqlite3 ~/.hermes/state.db '.dump' > /tmp/state_dump.sql` — recovers most data despite corruption
+2. Change ROLLBACK to COMMIT, add `OR IGNORE` to INSERTs
+3. `mv ~/.hermes/state.db ~/.hermes/state.db.corrupted`
+4. `sqlite3 ~/.hermes/state.db < /tmp/state_fixed.sql`
+5. Rebuild FTS5 indexes: `INSERT INTO messages_fts(messages_fts) VALUES('rebuild')`
 
 ### Known Cron Job IDs (all set to midnight daily as of 2026-05-17)
 - `ab4f36a8731b` — auto-fetch (0 0 * * *)
