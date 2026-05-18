@@ -70,16 +70,36 @@ python3 ~/.hermes/skills/memory-tree-pipeline/scripts/retrieve.py status
 - `GROQ_API_KEY` — Fallback LLM (if Anthropic unavailable). No default — set in ~/.hermes/.env
 - `THEBRAIN_API_KEY` — Optional, for TheBrain sync
 - `OPENAI_API_KEY` — Optional, for embeddings
-- `AGENTMEMORY_URL` — Optional, defaults to http://100.116.27.60:3111 (Mac Mini via Tailscale)
+- `AGENTMEMORY_URL` — Optional, defaults to http://localhost:3211 (SSH tunnel to Mac Mini)
 
 ### LLM Provider Priority
 The extractor and tree summarizer try **Anthropic first** (better extraction quality), then fall back to **Groq** (free/fast). Config.py loads `~/.hermes/.env` automatically so API keys don't need to be manually exported. The Groq free tier key can return 403 if expired — Anthropic is the reliable path.
 
-### Cron Jobs
-- Auto-fetch: every 20 minutes
-- Subconscious: every 5 minutes
-- Daily digest: midnight UTC
-- Sync push: every 6 hours
+### Cron Jobs (all midnight daily)
+- Auto-fetch: `0 0 * * *` — pulls changes from all 7 sources
+- Subconscious: `0 0 * * *` — evaluates system tasks, escalates issues
+- Daily digest: `0 0 * * *` — builds global summary node
+- Sync push: `0 0 * * *` — pushes entities to Obsidian/Wiki/TheBrain/agentmemory
+
+### agentmemory (Cross-Agent Sharing)
+The agentmemory daemon runs on the **Mac Mini** (100.116.27.60) as a launchd service.
+Access from MBP via SSH tunnel (auto-started in .zshrc):
+```bash
+ssh -f -N -L 3211:localhost:3111 vincent@100.116.27.60
+```
+Default AGENTMEMORY_URL is `http://localhost:3211`. All AI tools share this memory:
+- **Hermes** — SOUL.md instructs retrieval; cron syncs entities nightly
+- **Claude Code** — ~/.claude/CLAUDE.md has query/store instructions
+- **Cursor** — ~/.cursorrules has query/store instructions
+- **Codex** — ~/.codex/instructions.md has query/store instructions
+- **Viewer** — http://localhost:3213 (via tunnel) or http://localhost:3113 on Mini
+
+### TheBrain Organization (10 hubs)
+Home thought has ≤15 children organized into 10 thematic hubs:
+Identity & Self, Career & Work, Projects, Research, People,
+San Francisco, Philosophy & Mind, Finance & Investing,
+Music & Culture, Technology. 113 thoughts were re-parented from
+a flat 118-child home into this hierarchy.
 
 ## Parallel Extraction (Speed Trick)
 
@@ -133,6 +153,19 @@ Hotness formula: `mention_count × recency_weight × cross_source_bonus` where r
 - **Health check:** `GET /brains` (lists all brains). NOT `/brains/{brainId}` (returns 404).
 - **Search:** `GET /search/{brainId}?queryText=X&maxResults=N` (returns thought objects).
 - **Brain IDs must be full UUIDs** (e.g. `4a1ef771-4108-48ed-9ee9-2630c02f930d`), not short prefixes.
+
+### General
+- Groq free tier returns 403 — Anthropic is the primary LLM (auto-loaded from `~/.hermes/.env`)
+- agentmemory binds to localhost — use SSH tunnel for remote access (see sysadmin-extended skill)
+- Apple Notes via osascript takes 60-90s for ~400 notes — appears to hang but IS working
+- state.db uses `started_at` (REAL epoch) not `created_at`, no `preview` column
+- For bulk extraction (200+ chunks), use `fast_extract.py 10 300` (10-12x faster than queue workers)
+- Entity type duplication exists (same entity as project+concept) — dedup only merges within same type
+- Run `maintenance.py all` (dedup + hotness + buffers) after any bulk extraction
+
+## Reference Files
+- `references/architecture.md` — system architecture and design decisions
+- `references/operational-patterns.md` — parallel extraction, dedup, hotness, deployment patterns
 - To create a thought: `POST /thoughts/{brainId}` with `{"name": "...", "kind": 1, "acType": 0, "sourceThoughtId": "<parent>", "relation": 1}`
 - Rate limit ~50 req/min; always use 2.0s delay between calls
 
@@ -172,9 +205,10 @@ Hermes cron `script` paths must be relative to `~/.hermes/scripts/`. The pipelin
 - **Standalone repo:** https://github.com/vincentwi/hermes-memory-tree
 
 ### Apple Notes Provider
-- The `memo` CLI may not be installed. The provider was rewritten to use `osascript` (AppleScript) which is always available on macOS.
-- osascript iterating 378 notes takes ~60-90 seconds — backfill will appear to hang but is working.
+- The `memo` CLI may not be installed. The provider uses `osascript` (AppleScript) which is always available on macOS.
+- osascript iterating ~378 notes takes ~60-90 seconds — backfill will appear to hang but is working.
 - The provider uses a custom delimiter (`|||HERMES_SEP|||`) for reliable parsing of note name/body/id.
+- health_check runs `tell application "Notes" to get count of every note` — returns True if count > 0.
 
 ### state.db Recovery
 If the Hermes state.db becomes corrupted ("database disk image is malformed"):
